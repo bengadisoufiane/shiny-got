@@ -3,25 +3,50 @@ library(shiny)
 library(ggplot2)
 library(plyr)
 library(dplyr)
+library(sf)
+library(tidyr)
+library(leaflet)
 
-
+library(readr)
 # Data Preparation Steps
+characters = read_csv("data/characters.csv")
+episodes = read_csv("data/episodes.csv")
+scenes = read_csv("data/scenes.csv")
+appearances = read_csv("data/appearances.csv")
 
-data <- read.csv("Dec-2017.csv")
+locations=st_read("./data/GoTRelease/Locations.shp",crs=4326)
 
-data$Date <- strptime(as.character(data$Date.yyyy.MM.dd.),format="%m/%d/%Y")
-data$Date <- as.POSIXct(data$Date)
+lakes=st_read("data/GoTRelease/Lakes.shp",crs=4326)
 
-data$DateTime <- strptime(as.character(data$DateTime),format="%m/%d/%Y %H:%M")
-data$DateTime <- as.POSIXct(data$DateTime)
+conts=st_read("./data/GoTRelease/Continents.shp",crs=4326)
+land=st_read("./data/GoTRelease/Land.shp",crs=4326)
+wall=st_read("./data/GoTRelease/Wall.shp",crs=4326)
+islands=st_read("./data/GoTRelease/Islands.shp",crs=4326)
+kingdoms=st_read("./data/GoTRelease/Political.shp",crs=4326)
+landscapes=st_read("./data/GoTRelease/Landscape.shp",crs=4326)
+roads=st_read("./data/GoTRelease/Roads.shp",crs=4326)
+rivers=st_read("./data/GoTRelease/Rivers.shp",crs=4326)
 
-data$Day <- as.numeric(as.character(strftime(data$DateTime,format="%d")))
-data$Hour <- as.numeric(as.character(strftime(data$DateTime,format="%H")))
+main_char= c("Jon Snow", "Tyrion Lannister","Daenerys Targaryen","Sansa Stark","Cersei Lannister","Arya Stark")
+scenes_locations=st_read("./data/GoTRelease/ScenesLocations.shp",crs=4326)
+season=c("1","2","3","4","5","6","7","8")
+main_char= c("Jon Snow", "Tyrion Lannister","Daenerys Targaryen","Sansa Stark","Cersei Lannister","Arya Stark")
+landpol = st_union(st_geometry(land)) 
+islandpol = st_union(st_geometry(islands))
+backpol=st_union(landpol,islandpol)
 
-data <- data %>% filter(BC6!=0)
 
+loc_time=appearances %>% filter(name %in% main_char) %>% left_join(scenes) %>% group_by(location,name) %>% summarize(duration=sum(duration,na.rm=TRUE)) 
+loc_time_mc = scenes_locations %>% left_join(loc_time)
+background = st_as_sf(data.frame(name=main_char,geometry=rep(backpol,6)))
 
-
+loc_time=appearances %>% filter(name %in% main_char) %>% left_join(scenes) %>% group_by(location,name) %>% summarize(duration=sum(duration,na.rm=TRUE)) 
+loc_time_mc = scenes_locations %>% left_join(loc_time)
+colforest="#c0d7c2"
+colriver="#7ec9dc"
+colriver="#87cdde"
+colland="ivory"
+borderland = "ivory3"  
 
 
 ui <- fluidPage(
@@ -35,169 +60,144 @@ ui <- fluidPage(
     sidebarPanel(
       
       # Input: Slider for the number of bins ----
-      selectInput(inputId="color1",label="Choose Color",choices = c("Red"="Red","Blue"="Blue","Green"="Green"),
-                  selected = "Blue",multiple = F),
       
-      radioButtons(inputId = "border1",label = "Select Border",choices = c("Black"="#000000","White"="#ffffff")),
+      checkboxGroupInput(inputId = "season",label = "season",choices =season ,selected =season),
       
-      selectInput(inputId="channel1",label="Choose Channel",choices = c("BC1"="BC1",
-                                                                        "BC2"="BC2",
-                                                                        "BC3"="BC3",
-                                                                        "BC4"="BC4",
-                                                                        "BC5"="BC5",
-                                                                        "BC6"="BC6",
-                                                                        "BC7"="BC7"),
+      selectInput(inputId="personnage",label="personnage",choices =main_char,
                   selected = "BC6",multiple = F),
       
-      sliderInput(inputId = "bins1xz",
-                  label = "Number of bins:",
-                  min = 1,
-                  max = 50,
-                  value = 30),
       
-      sliderInput(inputId = "range1",
-                  label = "Data Range",
-                  min = 1,
-                  max = 31,
-                  value = c(1,31))
       
     ),
     
-    # Main panel for displaying outputs ----
     mainPanel(
-      
-      # Output: Histogram ----
-      plotOutput(outputId = "distPlot"),
-      plotOutput(outputId = "distPlot1"),
-      plotOutput(outputId = "distPlot2")
+      tabsetPanel(
+        tabPanel('statistic',plotOutput('stat'),plotOutput('stat1'),plotOutput('stat2')),
+        tabPanel('map',plotOutput('map')),
+        tabPanel('hist',plotOutput("hist")),
+        tabPanel('characters',DT::DTOutput('characters')),
+        tabPanel('episodes',DT::DTOutput('episodes')),
+        tabPanel('scenes',DT::DTOutput('scenes')),
+        tabPanel('appearances',DT::DTOutput('appearances'))
+      )
     )
+    
   )
 )
 
 # Define server logic required to draw a histogram ----
 server <- function(input, output){
+  #mise a jour des donnees avec une fonction reactive 
+  characters_ <- reactive(characters)
+  episodes_ <- reactive(episodes)
+  scenes_ <- reactive(scenes)
+  appearances_ <- reactive(appearances_)
   
   # 1. It is "reactive" and therefore should be automatically
   #    re-executed when inputs (input$bins) change
   # 2. Its output type is a plot
   
-  output$distPlot <- renderPlot({
-    
-    if(input$color1=="Red"){
-      sColor = "#ff3300"
-    }else if(input$color1=="Blue"){
-      sColor = "#3399ff"
-    }else if(input$color1=="Green"){
-      sColor = "#66ff33"
-    }
-    
-    p2 <- data %>%  filter(Day >= input$range1[1] & Day <= input$range1[2]) %>% ggplot()
-    if(input$channel1 == "BC1"){
-      p2 <- p2 + geom_histogram(aes(x=BC1),bins = input$bins1xz,col=input$border1,fill=sColor)
-    }else if(input$channel1 == "BC2"){
-      p2 <- p2 + geom_histogram(aes(x=BC2),bins = input$bins1xz,col=input$border1,fill=sColor)
-    }else if(input$channel1 == "BC3"){
-      p2 <- p2 + geom_histogram(aes(x=BC3),bins = input$bins1xz,col=input$border1,fill=sColor)
-    }else if(input$channel1 == "BC4"){
-      p2 <- p2 + geom_histogram(aes(x=BC4),bins = input$bins1xz,col=input$border1,fill=sColor)
-    }else if(input$channel1 == "BC5"){
-      p2 <- p2 + geom_histogram(aes(x=BC5),bins = input$bins1xz,col=input$border1,fill=sColor)
-    }else if(input$channel1 == "BC6"){
-      p2 <- p2 + geom_histogram(aes(x=BC6),bins = input$bins1xz,col=input$border1,fill=sColor)
-    }else if(input$channel1 == "BC7"){
-      p2 <- p2 + geom_histogram(aes(x=BC7),bins = input$bins1xz,col=input$border1,fill=sColor)
-    }
-    p2 <- p2 +  theme_bw()+
-      theme(axis.title = element_text(size=12,color="BLACK",face="bold"),
-            axis.text = element_text(size=14,color="BLACK",face="bold"))+
-      labs(x="Black Carbon (ng/m3)",y="Count",title=paste("Black Carbon Concentration Histogram",input$channel1,sep = " "))
-    
-    p2
-    #hist(x, breaks = bins, col = sColor, border = input$border1,
-    #     xlab = "Waiting time to next eruption (in mins)",
-    #     main = "Histogram of waiting times")
-  })
-  
-  output$distPlot1 <- renderPlot({
-   
-    p1 <- data  %>%  filter(Day >= input$range1[1] & Day <= input$range1[2]) %>% ggplot(aes(x=DateTime))
-    if(input$channel1 == "BC1"){
-      p1 <- p1 + geom_line(aes(y=BC1,col="BC1"),size=0.5)
-    }else
-    if(input$channel1 == "BC2"){
-      p1 <- p1 + geom_line(aes(y=BC2,col="BC2"),size=0.5)
-    }else
-    if(input$channel1 == "BC3"){
-      p1 <- p1 + geom_line(aes(y=BC3,col="BC3"),size=0.5)
-    }else
-    if(input$channel1 == "BC4"){
-      p1 <- p1 + geom_line(aes(y=BC4,col="BC4"),size=0.5)
-    }else
-    if(input$channel1 == "BC5"){
-      p1 <- p1 + geom_line(aes(y=BC5,col="BC5"),size=0.5)
-    }else
-    if(input$channel1 == "BC6"){
-      p1 <- p1 + geom_line(aes(y=BC6,col="BC6"),size=0.5)
-    }else
-    if(input$channel1 == "BC7"){
-      p1 <- p1 + geom_line(aes(y=BC7,col="BC7"),size=0.5)
-    }
-    p1 <- p1 +  theme_bw()+
-      theme(axis.title = element_text(size=12,color="BLACK",face="bold"),
-            axis.text = element_text(size=14,color="BLACK",face="bold"))+
-      labs(x="Time",y="Black Carbon (ng/m3)",title="Black Carbon Concentration in Air - Dec, 2017",colour="Channel")
+  output$stat <- renderPlot({
 
-    p1
+    
+    scenes_stats=scenes %>% left_join(episodes) %>% 
+      group_by(episodeTitle,seasonNum) %>% filter(seasonNum %in% input$season) %>% 
+      summarize(nb_scenes=n(),duration_max=max(duration),nbdeath=sum(nbdeath))
+    
+    labels = scenes_stats %>% filter(duration_max>400|nb_scenes>200|seasonNum==1)
+    ggplot(scenes_stats,aes(x=nb_scenes,y=duration_max,col=factor(seasonNum)))+
+      geom_point(aes(size=nbdeath))+
+      geom_text(data=labels,aes(label=episodeTitle),vjust=-0.6)+
+      scale_x_continuous("Nombre de scène",limits = c(0,280))+
+      scale_y_continuous("Durée de la scène la plus longue",limits = c(100,300))+
+      scale_color_brewer("Saison",palette ="Spectral")+
+      guides(colour = "legend", size = "legend")+
+      theme_bw()
+  })
+  output$stat1 <- renderPlot({
+    
+    
+    screenTimePerSeasons = appearances %>% left_join(scenes) %>% 
+      left_join(episodes) %>% 
+      group_by(name,seasonNum) %>%  filter(name %in% main_char)%>%  filter(seasonNum %in% input$season)%>% 
+      summarise(screenTime=sum(duration)) %>% 
+      arrange(desc(screenTime)) 
+    screenTimeTotal = screenTimePerSeasons %>% 
+      group_by(name) %>% 
+      summarise(screenTimeTotal=sum(screenTime))
+    mainCharacters = screenTimeTotal %>% 
+      filter(screenTimeTotal>60*60) %>% 
+      arrange(screenTimeTotal) %>% 
+      mutate(nameF=factor(name,levels = name))
+    data = screenTimePerSeasons %>% left_join(mainCharacters) %>% filter(!is.na(nameF))
+    ggplot(data)+
+      geom_bar(aes(y=nameF,x=screenTime/60,fill=factor(seasonNum,level=8:1)),stat="identity")+
+      scale_fill_brewer("Saison",palette = "Spectral")+theme_bw()+
+      geom_text(data=mainCharacters,aes(y=nameF,x=screenTimeTotal/60+5,label=paste(round(screenTimeTotal/60),'min')),hjust = "left")+
+      scale_x_continuous("Temps d'apparition (min)",breaks = seq(0,750,by=120),limits = c(0,780),expand = c(0,1))+
+      ylab("")+ggtitle("Temps d'apparition cumulé par personnage et saison")
+  })
+  output$stat2 <- renderPlot({
+    
+    labels = scenes %>% filter(duration>400)
+    ggplot(scenes %>% left_join(episodes)%>% filter(seasonNum %in% input$season))+
+      geom_boxplot(aes(x=factor(episodeId),y=duration,fill=factor(seasonNum)))+
+      geom_text(data=labels ,aes(x=factor(episodeId),y=duration,label=subLocation),hjust = "right",vjust="top")+
+      scale_x_discrete("N° épisode",as.character(seq(1,73, by=5)))+
+      scale_fill_brewer(palette="Spectral",guide="none")+
+      ylab("Durée des scènes (min)")+
+      ggtitle("Répartition des durées des scènes par épisodes")+
+      theme_bw()
+  })
+  
+  output$map <- renderPlot({
+    
+    
+    ggplot()+geom_sf(data=background,color=borderland,fill=colland)+
+      geom_sf(data=loc_time_mc%>% filter(!is.na(duration))%>% filter(name==input$personnage)
+              ,aes(size=duration/60,color=input$personnage))+
+      geom_sf_text(data=loc_time_mc%>% filter(!is.na(duration))%>% filter(name==input$personnage)
+                   ,aes(label=location),color="#000000",vjust="bottom",family="Palatino", fontface="italic")+
+      coord_sf(expand = 0,ndiscr = 0)+
+      scale_color_discrete(guide="none")+
+      scale_size_area("Durée (min) :",max_size = 12,breaks=c(30,60,120,240))+
+      theme(panel.background = element_rect(fill = colriver,color=NA),
+            text = element_text(family="Palatino",face = "bold",size = 14),
+            legend.key = element_rect(fill="#ffffff"),
+      ) +
+      labs(title = paste("Temps de présence de : ",  input$personnage),x="",y="")
+
     
   })
   
-  output$distPlot2 <- renderPlot({
-    d <- data  %>%  filter(Day >= input$range1[1] & Day <= input$range1[2])
+  output$hist <- renderPlot({
     
-    d <- ddply(d, .variables = c("Hour"),function(x){
-      
-      BC1avg <- mean(x$BC1,na.rm = T)
-      BC2avg <- mean(x$BC2,na.rm = T)
-      BC3avg <- mean(x$BC3,na.rm = T)
-      BC4avg <- mean(x$BC4,na.rm = T)
-      BC5avg <- mean(x$BC5,na.rm = T)
-      BC6avg <- mean(x$BC6,na.rm = T)
-      BC7avg <- mean(x$BC7,na.rm = T)
-      
-      data.frame(BC1avg,BC2avg,BC3avg,BC4avg,BC5avg,BC6avg,BC7avg)
-    })
-    
-    p1 <- d %>% ggplot(aes(x=Hour))
-    if(input$channel1 == "BC1"){
-      p1 <- p1 + geom_line(aes(y=BC1avg,col="BC1"),size=1)
-      p1 <- p1 + geom_point(aes(y=BC1avg))
-    }else if(input$channel1 == "BC2"){
-      p1 <- p1 + geom_line(aes(y=BC2avg,col="BC2"),size=1)
-      p1 <- p1 + geom_point(aes(y=BC2avg))
-    }else if(input$channel1 == "BC3"){
-      p1 <- p1 + geom_line(aes(y=BC3avg,col="BC3"),size=1)
-      p1 <- p1 + geom_point(aes(y=BC3avg))
-    }else if(input$channel1 == "BC4"){
-      p1 <- p1 + geom_line(aes(y=BC4avg,col="BC4"),size=1)
-      p1 <- p1 + geom_point(aes(y=BC4avg))
-    }else if(input$channel1 == "BC5"){
-      p1 <- p1 + geom_line(aes(y=BC5avg,col="BC5"),size=1)
-      p1 <- p1 + geom_point(aes(y=BC5avg))
-    }else if(input$channel1 == "BC6"){
-      p1 <- p1 + geom_line(aes(y=BC6avg,col="BC6"),size=1)
-      p1 <- p1 + geom_point(aes(y=BC6avg))
-    }else if(input$channel1 == "BC7"){
-      p1 <- p1 + geom_line(aes(y=BC7avg,col="BC7"),size=1)
-      p1 <- p1 + geom_point(aes(y=BC7avg))
-    }
-    p1 <- p1 +  theme_bw()+
-      theme(axis.title = element_text(size=12,color="BLACK",face="bold"),
-            axis.text = element_text(size=14,color="BLACK",face="bold"))+
-      labs(x="Time",y="Black Carbon (ng/m3)",title="Black Carbon Concentration in Air - Average Diurnal Variation - Dec, 2017",colour="Channel")
-    
-    p1
+
+    ggplot()+geom_sf(data=land,fill=colland,col=borderland,size=0.1)+
+      geom_sf(data=islands,fill=colland,col="ivory3")+
+      geom_sf(data=landscapes %>% filter(type=="forest"),fill=colforest,col=colforest)+
+      geom_sf(data=rivers,col=colriver)+
+      geom_sf(data=lakes,col=colriver,fill=colriver)+
+      geom_sf(data=wall,col="black",size=1)+
+      geom_sf_text(data= locations %>% filter(size>4,name!='Tolos'),aes(label=name),size=2.5,family="Palatino", fontface="italic")+
+      theme_minimal()+coord_sf(expand = 0,ndiscr = 0)+
+      theme(panel.background = element_rect(fill = colriver,color=NA)) +
+      labs(title = "GoT",x="",y="")
     
   })
+  #un tableau interactif
+  output$characters <- DT::renderDT(
+    characters_()
+  )
+  output$episodes <- DT::renderDT(
+    episodes_()
+  )
+  output$scenes <- DT::renderDT(
+    scenes_()
+  )
+  output$appearances <- DT::renderDT(
+    appearances_()
+  )
 }
 
 shinyApp(ui = ui, server = server)
