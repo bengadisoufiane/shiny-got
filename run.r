@@ -52,7 +52,7 @@ borderland = "ivory3"
 ui <- fluidPage(
   
   # App title ----
-  titlePanel("Shiny - First Interactive Visualization Example"),
+  titlePanel("Web Application based on Shiny and R, it allows us to navigate in the GOT dataset."),
   
   # Sidebar layout with input and output definitions ----
   sidebarLayout(
@@ -61,9 +61,9 @@ ui <- fluidPage(
       
       # Input: Slider for the number of bins ----
       
-      checkboxGroupInput(inputId = "season",label = "season",choices =season ,selected =season),
+      checkboxGroupInput(inputId = "season",label = "Seasons",choices =season ,selected =season),
       
-      selectInput(inputId="personnage",label="personnage",choices =main_char,
+      selectInput(inputId="personnage",label="Personnages",choices =main_char,
                   selected = "BC6",multiple = F),
       
       
@@ -73,8 +73,8 @@ ui <- fluidPage(
     mainPanel(
       tabsetPanel(
         tabPanel('statistic',plotOutput('stat'),plotOutput('stat1'),plotOutput('stat2')),
-        tabPanel('map',plotOutput('map')),
-        tabPanel('hist',plotOutput("hist")),
+        tabPanel('Maps',plotOutput('map')),
+        tabPanel('Univers GoT',plotOutput("hist")),
         tabPanel('characters',DT::DTOutput('characters')),
         tabPanel('episodes',DT::DTOutput('episodes')),
         tabPanel('scenes',DT::DTOutput('scenes')),
@@ -91,7 +91,7 @@ server <- function(input, output){
   characters_ <- reactive(characters)
   episodes_ <- reactive(episodes)
   scenes_ <- reactive(scenes)
-  appearances_ <- reactive(appearances_)
+  appearances_ <- reactive(appearances)
   
   # 1. It is "reactive" and therefore should be automatically
   #    re-executed when inputs (input$bins) change
@@ -112,6 +112,7 @@ server <- function(input, output){
       scale_y_continuous("Durée de la scène la plus longue",limits = c(100,300))+
       scale_color_brewer("Saison",palette ="Spectral")+
       guides(colour = "legend", size = "legend")+
+      ggtitle("informations sur les saisons et le nombre de morts ")+
       theme_bw()
   })
   output$stat1 <- renderPlot({
@@ -182,7 +183,7 @@ server <- function(input, output){
       geom_sf_text(data= locations %>% filter(size>4,name!='Tolos'),aes(label=name),size=2.5,family="Palatino", fontface="italic")+
       theme_minimal()+coord_sf(expand = 0,ndiscr = 0)+
       theme(panel.background = element_rect(fill = colriver,color=NA)) +
-      labs(title = "GoT",x="",y="")
+      labs(title = "fond de carte de l’univers GoT avec les lacs, rivières et forêts ainsi que les noms des principales villes.",x="",y="")
     
   })
   #un tableau interactif
