@@ -10,5 +10,5 @@ Web Application based on Shiny and R, it allows us to navigate in so many ways t
 - ZAHIRI Haytam
 
 ## Data source :
-* Data tabular used in this project was collected by Jeffrey Lancaster and can be found [here](https://github.com/jeffreylancaster/game-of-thrones).
+* Tabular data used in this project was collected by Jeffrey Lancaster and can be found [here](https://github.com/jeffreylancaster/game-of-thrones).
 * The spatial data was created by ESRI and is available [here](https://www.arcgis.com/home/item.html?).
